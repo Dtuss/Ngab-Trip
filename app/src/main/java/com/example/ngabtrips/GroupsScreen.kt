@@ -10,19 +10,23 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
-
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupsScreen(navController: NavController, destinationId: Int, username: String) {
     val scope = rememberCoroutineScope()
     var groups by remember { mutableStateOf<List<Group>>(emptyList()) }
+    var newComment by remember { mutableStateOf("") }
+    var isSubmitting by remember { mutableStateOf(false) }
 
     // Fungsi untuk mengambil/refresh data
     fun fetchGroups() {
@@ -77,6 +81,7 @@ fun GroupsScreen(navController: NavController, destinationId: Int, username: Str
                     val isCreator = group.creator_name == username
                     // isMember sekarang secara implisit akan true jika user adalah kreator
                     val isMember = group.member.contains(username)
+                    val hasCommented = group.comment.any { it.startsWith("$username|") }
 
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -87,11 +92,40 @@ fun GroupsScreen(navController: NavController, destinationId: Int, username: Str
                             Spacer(modifier = Modifier.height(4.dp))
                             Text("📍 Meeting Point: ${group.meeting_point}")
                             Text("📅 Berangkat: ${group.departure_date}")
-                            // --- PERUBAHAN 1: Hapus "+ 1" ---
-                            // Jumlah anggota sekarang adalah ukuran list 'member'
                             Text("👥 Anggota: ${group.member.size} / ${group.max_members}")
                             Spacer(modifier = Modifier.height(16.dp))
+                            val validComments = group.comment.filter { it.isNotBlank() }
+                            if (validComments.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Komentar:", style = MaterialTheme.typography.titleSmall)
 
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    validComments.forEach { c ->
+                                        val split = c.split("|")
+                                        val user = split.getOrNull(0) ?: "unknown"
+                                        val msg = split.getOrNull(1) ?: ""
+
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                            )
+                                        ) {
+                                            Text(
+                                                text = buildAnnotatedString {
+                                                    withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                                                        append(user)
+                                                    }
+                                                    append(": ")
+                                                    append(msg)
+                                                },
+                                                modifier = Modifier.padding(12.dp),
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                             if (group.status == "finished") {
                                 Text(
                                     "Trip Selesai",
@@ -99,6 +133,43 @@ fun GroupsScreen(navController: NavController, destinationId: Int, username: Str
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.fillMaxWidth()
                                 )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // Input Komentar
+                                OutlinedTextField(
+                                    value = newComment,
+                                    onValueChange = { newComment = it },
+                                    label = { Text("Tambahkan Komentar") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            isSubmitting = true
+                                            try {
+                                                val updatedComments = group.comment + "$username|$newComment"
+                                                SupabaseClient.client.from("groups")
+                                                    .update(mapOf("comment" to updatedComments)) {
+                                                        filter { eq("group_id", group.group_id) }
+                                                    }
+
+                                                newComment = ""
+                                                fetchGroups()
+                                            } catch (e: Exception) {
+                                                println("Gagal menambah komentar: ${e.message}")
+                                            }
+                                            isSubmitting = false
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    enabled = newComment.isNotBlank() && !isSubmitting && !hasCommented
+                                ) {
+                                    Text(if (isSubmitting) "Mengirim..." else "Kirim Komentar")
+                                }
                             } else {
                                 // --- PERUBAHAN 2: Logika if/else disederhanakan ---
                                 // Jika user adalah kreator, ia juga seorang member, jadi kita cek isCreator dulu.

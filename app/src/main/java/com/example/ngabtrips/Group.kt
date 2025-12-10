@@ -12,7 +12,8 @@ data class Group(
     val departure_date: String,
     val max_members: Int,
     val status: String,
-    val member: List<String> = emptyList()
+    val member: List<String> = emptyList(),
+    val comment: List<String> = emptyList()
 )
 
 @Serializable
@@ -23,5 +24,6 @@ data class CreateGroupRequest(
     val meeting_point: String,
     val departure_date: String,
     val max_members: Int,
-    val member: List<String> = emptyList()
+    val member: List<String> = emptyList(),
+    val comment: List<String> = emptyList()
 )
